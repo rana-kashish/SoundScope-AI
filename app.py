@@ -4,6 +4,25 @@ import pandas as pd
 import numpy as np
 import joblib
 
+
+def _ensure_legacy_sklearn_pickle_compatibility():
+    try:
+        from sklearn.compose import _column_transformer as column_transformer_module
+
+        if not hasattr(column_transformer_module, '_RemainderColsList'):
+            class _RemainderColsList(list):
+                pass
+
+            column_transformer_module._RemainderColsList = _RemainderColsList
+    except Exception:
+        pass
+
+
+def safe_joblib_load(path):
+    _ensure_legacy_sklearn_pickle_compatibility()
+    return joblib.load(path)
+
+
 # -----------------------------------------------------------------------------
 # PAGE CONFIGURATION & STYLING
 # -----------------------------------------------------------------------------
@@ -49,11 +68,11 @@ st.markdown("""
 # -----------------------------------------------------------------------------
 @st.cache_resource
 def load_models():
-    pipe = joblib.load('soundscope_popularity_pipeline.joblib')
-    nn = joblib.load('soundscope_nn_recommender.joblib')
-    rec_scaler = joblib.load('soundscope_rec_scaler.joblib')
-    kmeans = joblib.load('soundscope_mood_kmeans.joblib')
-    mood_scaler = joblib.load('soundscope_mood_scaler.joblib')
+    pipe = safe_joblib_load('soundscope_popularity_pipeline.joblib')
+    nn = safe_joblib_load('soundscope_nn_recommender.joblib')
+    rec_scaler = safe_joblib_load('soundscope_rec_scaler.joblib')
+    kmeans = safe_joblib_load('soundscope_mood_kmeans.joblib')
+    mood_scaler = safe_joblib_load('soundscope_mood_scaler.joblib')
     return pipe, nn, rec_scaler, kmeans, mood_scaler
 
 @st.cache_data

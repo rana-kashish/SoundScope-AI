@@ -6,6 +6,35 @@ from typing import List, Dict, Any, Optional
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+
+def _ensure_legacy_sklearn_pickle_compatibility() -> None:
+    """Support older sklearn pickles on newer sklearn releases.
+
+    Some serialized ColumnTransformer objects reference the private class
+    ``_RemainderColsList`` from older scikit-learn versions. Newer releases
+    removed it from ``sklearn.compose._column_transformer``. Re-adding a
+    minimal compatible stub lets ``joblib.load`` succeed without retraining.
+    """
+    try:
+        from sklearn.compose import _column_transformer as column_transformer_module
+
+        if not hasattr(column_transformer_module, '_RemainderColsList'):
+            class _RemainderColsList(list):
+                pass
+
+            column_transformer_module._RemainderColsList = _RemainderColsList
+    except Exception:
+        # The environment may not have scikit-learn or may be using a version
+        # with a different module layout. Fail-open here so app startup can
+        # continue if there are no legacy pickles to load.
+        pass
+
+
+def _safe_joblib_load(path: str):
+    _ensure_legacy_sklearn_pickle_compatibility()
+    return joblib.load(path)
+
+
 class MLService:
     def __init__(self):
         self.pipeline = None
@@ -27,11 +56,11 @@ class MLService:
         catalog_path = os.path.join(BASE_DIR, 'soundscope_sample_tracks.csv')
 
         print("Loading ML models into memory...")
-        self.pipeline = joblib.load(pipe_path)
-        self.nn_recommender = joblib.load(nn_path)
-        self.rec_scaler = joblib.load(rec_scaler_path)
-        self.kmeans_mood = joblib.load(kmeans_path)
-        self.mood_scaler = joblib.load(mood_scaler_path)
+        self.pipeline = _safe_joblib_load(pipe_path)
+        self.nn_recommender = _safe_joblib_load(nn_path)
+        self.rec_scaler = _safe_joblib_load(rec_scaler_path)
+        self.kmeans_mood = _safe_joblib_load(kmeans_path)
+        self.mood_scaler = _safe_joblib_load(mood_scaler_path)
 
         catalog_parquet = os.path.join(BASE_DIR, 'soundscope_clean_catalog.parquet')
         catalog_csv = os.path.join(BASE_DIR, 'soundscope_sample_tracks.csv')
