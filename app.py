@@ -6,6 +6,11 @@ import joblib
 
 
 def _ensure_legacy_sklearn_pickle_compatibility():
+    """Support older/cross-version sklearn pickles on different environments."""
+    import sys
+    import types
+
+    # 1. Handle _RemainderColsList in ColumnTransformer
     try:
         from sklearn.compose import _column_transformer as column_transformer_module
 
@@ -14,6 +19,48 @@ def _ensure_legacy_sklearn_pickle_compatibility():
                 pass
 
             column_transformer_module._RemainderColsList = _RemainderColsList
+    except Exception:
+        pass
+
+    # 2. Handle Cython _loss module when pickled with top-level module name '_loss'
+    try:
+        if '_loss' not in sys.modules:
+            try:
+                from sklearn._loss import _loss as sklearn_loss_ext
+                sys.modules['_loss'] = sklearn_loss_ext
+            except Exception:
+                sys.modules['_loss'] = types.ModuleType('_loss')
+
+        loss_mod = sys.modules['_loss']
+
+        if not hasattr(loss_mod, 'CyHalfSquaredError'):
+            try:
+                from sklearn._loss._loss import CyHalfSquaredError
+                loss_mod.CyHalfSquaredError = CyHalfSquaredError
+            except Exception:
+                class DummyCyHalfSquaredError:
+                    def __init__(self, *args, **kwargs):
+                        pass
+                loss_mod.CyHalfSquaredError = DummyCyHalfSquaredError
+
+        orig_unpickle = getattr(loss_mod, '__pyx_unpickle_CyHalfSquaredError', None)
+        def _safe_unpickle_cy_half_squared(*args, **kwargs):
+            if orig_unpickle is not None:
+                try:
+                    return orig_unpickle(*args, **kwargs)
+                except Exception:
+                    pass
+            cls = getattr(loss_mod, 'CyHalfSquaredError', None)
+            if cls is not None:
+                try:
+                    return cls()
+                except Exception:
+                    pass
+            class DummyLoss:
+                pass
+            return DummyLoss()
+
+        loss_mod.__pyx_unpickle_CyHalfSquaredError = _safe_unpickle_cy_half_squared
     except Exception:
         pass
 
